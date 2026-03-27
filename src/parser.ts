@@ -92,12 +92,16 @@ export function parseSession(jsonlPath: string, projectSlug: string): Session | 
     }
 
     if (role === 'assistant' && message.usage) {
-      const u = message.usage as Record<string, number>;
+      const u = message.usage as Record<string, unknown>;
+      const safeInt = (v: unknown): number => {
+        const n = Number(v);
+        return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+      };
       usage = {
-        input_tokens: u.input_tokens ?? 0,
-        cache_read_input_tokens: u.cache_read_input_tokens ?? 0,
-        cache_creation_input_tokens: u.cache_creation_input_tokens ?? 0,
-        output_tokens: u.output_tokens ?? 0,
+        input_tokens: safeInt(u.input_tokens),
+        cache_read_input_tokens: safeInt(u.cache_read_input_tokens),
+        cache_creation_input_tokens: safeInt(u.cache_creation_input_tokens),
+        output_tokens: safeInt(u.output_tokens),
       };
     }
 
