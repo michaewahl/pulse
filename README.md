@@ -9,12 +9,12 @@ pulse — quick stats
 
   Project                    Sessions  Health  Turns  Revisit  CacheEff
   ─────────────────────────────────────────────────────────────────────
-  delta-detection-app               2      95    38.5      20%      100%
-  CTO-CIO-Agent                     1      70    24.0      20%      100%
-  CC-RLM                            4      59    22.3      14%       75%
-  SignalSDR                        12      56    25.2      22%       92%
-  NextGen-AI-Authoring             21      50    23.5      29%       95%
-  SmartSheet-Workflows              3      34    81.3      70%      100%  ⚠
+  data-pipeline                     2      95    38.5      20%      100%
+  ai-agent                          1      70    24.0      20%      100%
+  context-engine                    4      59    22.3      14%       75%
+  signal-processor                 12      56    25.2      22%       92%
+  content-platform                 21      50    23.5      29%       95%
+  workflow-automation               3      34    81.3      70%      100%  ⚠
 ```
 
 ---
@@ -35,7 +35,7 @@ Pulse surfaces all four in under a second, against session data you already have
 ## Install
 
 ```bash
-git clone https://github.com/mikewahl/pulse
+git clone https://github.com/michaewahl/pulse
 cd pulse
 npm install
 ```
@@ -73,7 +73,7 @@ Pulse reads from `~/.claude/projects/` — the directory Claude Code uses to sto
 How many times you had to message the agent per session. Trending up means the agent is getting less efficient — more back-and-forth to complete the same kinds of tasks. Could be memory bloat, context pollution, or task complexity increasing.
 
 ### File Revisit Rate
-`(duplicate file reads / total file reads)` per session. High rate = the agent re-read files it already had in context — token waste and a signal it couldn't hold state between tool calls. **SmartSheet Workflows in the screenshot above: 70%.** The agent re-read the same files 7 times out of 10.
+`(duplicate file reads / total file reads)` per session. High rate = the agent re-read files it already had in context — token waste and a signal it couldn't hold state between tool calls. **workflow-automation in the screenshot above: 70%.** The agent re-read the same files 7 times out of 10.
 
 ### Context Efficiency
 `cache_read_input_tokens / total input tokens`. Higher is better — it means the agent is reusing cached context from earlier in the session rather than reprocessing everything from scratch each turn. Consistently low values mean you're paying for tokens you've already paid for.
@@ -87,13 +87,13 @@ How many times you had to message the agent per session. Trending up means the a
 
 Running Pulse against 73 sessions across 23 projects revealed patterns that weren't visible before:
 
-**SmartSheet Workflows — 70% file revisit rate, 81 avg turns.** The agent was re-reading the same files on nearly every turn. 81 turns average per session is a metabolic disorder — the same project type runs in 15–25 turns elsewhere. This is the kind of signal that was completely invisible before Pulse.
+**workflow-automation — 70% file revisit rate, 81 avg turns.** The agent was re-reading the same files on nearly every turn. 81 turns average per session is a metabolic disorder — the same project type runs in 15–25 turns elsewhere. This is the kind of signal that was completely invisible before Pulse.
 
-**Dppaas demo — 34 turns, 43% revisit rate.** The agent was churning. Comparing to delta-detection-app (38.5 turns but only 20% revisit) shows the revisit rate is the real problem, not just turn count.
+**api-service — 34 turns, 43% revisit rate.** The agent was churning. Comparing to data-pipeline (38.5 turns but only 20% revisit) shows the revisit rate is the real problem, not just turn count.
 
-**delta-detection-app — health score 95.** Short sessions, 100% cache efficiency, low revisit. This is what a healthy agent metabolism looks like. The contrast against the bottom of the list makes the pathology visible.
+**data-pipeline — health score 95.** Short sessions, 100% cache efficiency, low revisit. This is what a healthy agent metabolism looks like. The contrast against the bottom of the list makes the pathology visible.
 
-**CC-RLM — 75% cache efficiency** vs everything else at 92–100%. CC-RLM routes some requests through a local model (Ollama) which bypasses Claude's cache. That's the cause — visible immediately in the metric.
+**context-engine — 75% cache efficiency** vs everything else at 92–100%. This project routes some requests through a local model which bypasses Claude's cache. That's the cause — visible immediately in the metric.
 
 ---
 
