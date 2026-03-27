@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.DS_Store
+pulse-report.html
+
+# Product 2 & 3 — not ready
+contextiq/
+contextiq-SPEC.md
+agentkit-SPEC.md
+agent-metabolism-monitor-spec.docx
+
+# Claude Code internals
+.claude/

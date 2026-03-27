@@ -1,0 +1,24 @@
+{
+  "name": "pulse",
+  "version": "0.1.0",
+  "description": "Health monitor for AI coding agents",
+  "type": "module",
+  "bin": {
+    "pulse": "./bin/pulse.js"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsc",
+    "analyze": "tsx src/cli.ts analyze",
+    "report": "tsx src/cli.ts report"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "open": "^10.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "@types/node": "^22.10.2"
+  }
+}
