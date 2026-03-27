@@ -1,113 +1,78 @@
-# pulse
+# Pulse: Agent Cognition Observability
 
-**A health monitor for AI coding agents.**
+We can all see our AI API bills. What we can't see is the actual metabolism of our coding agents.
 
-Pulse reads the session transcripts Claude Code already writes to disk and shows you whether your agent is getting more or less efficient over time — turns per task, file revisit rate, cache efficiency, memory utilization. No cloud. No accounts. No API keys.
+Is session 30 more efficient than session 5? Is the agent re-reading the exact same files in an infinite loop? Is the context memory you spent tokens building actually being utilized?
 
-```
-pulse — quick stats
+**Pulse** is a local observability tool that reads the JSONL session transcripts your agent (like Claude Code) already writes to disk, and turns them into a health dashboard.
 
-  Project                    Sessions  Health  Turns  Revisit  CacheEff
-  ─────────────────────────────────────────────────────────────────────
-  data-pipeline                     2      95    38.5      20%      100%
-  ai-agent                          1      70    24.0      20%      100%
-  context-engine                    4      59    22.3      14%       75%
-  signal-processor                 12      56    25.2      22%       92%
-  content-platform                 21      50    23.5      29%       95%
-  workflow-automation               3      34    81.3      70%      100%  ⚠
-```
+![Pulse Dashboard](docs/dashboard-screenshot.png)
 
 ---
 
-## The problem
+## The Problem: AI Metabolic Disorders
 
-You can see your Anthropic bill. You cannot see:
+You wouldn't run a backend service without instrumenting it to catch performance regressions. But right now, we let AI agents write production code without any observability into their cognition loops.
 
-- Whether session 30 on a project is slower than session 5
-- Whether your agent re-reads the same files over and over (context thrashing)
-- Whether the memory files you've been building are actually being used
-- Which projects are running efficiently and which are burning turns
+When I ran Pulse against my own local projects, the data was jarring:
 
-Pulse surfaces all four in under a second, against session data you already have.
+- **Unhealthy projects:** 70% file revisit rate. The agent re-read the exact same files 7 out of 10 times. Pure token waste.
+- **Healthy projects:** Tight sessions, 100% cache reuse, low revisit rates.
+
+Pulse is the thermometer, not the doctor. It won't fix your codebase, but it will tell you exactly where your architecture is causing the LLM to thrash.
 
 ---
 
-## Install
+## Core Metrics
+
+Pulse parses your transcripts to calculate four key indicators:
+
+1. **File Revisit Rate** — The percentage of times an agent reads a file it has already read in the same session. High rates indicate thrashing or missing context.
+2. **Turns to Resolution** — How many back-and-forth prompts it takes to close a task. Tracks whether the agent is getting smarter over time, or degrading as context windows bloat.
+3. **Context Efficiency** — Ratio of cache-read tokens vs. total input tokens. Low values mean you're paying for context the model already processed.
+4. **Memory Utilization** — Is the agent actually querying the local project memory it generated in previous sessions?
+
+---
+
+## Zero Cloud. Zero API Keys.
+
+Pulse runs 100% locally. It parses the transcript files already sitting on your hard drive.
+
+- No data leaves your machine.
+- No API keys required.
+- No telemetry.
+
+---
+
+## Quick Start
 
 ```bash
-git clone https://github.com/michaewahl/pulse
+# Clone the repository
+git clone https://github.com/michaewahl/pulse.git
 cd pulse
+
+# Install dependencies
 npm install
-```
 
-No global install required. Runs directly with `npx tsx`.
-
----
-
-## Usage
-
-```bash
-# Quick terminal summary — all projects
+# Scan all projects and print a quick summary
 npx tsx src/cli.ts stats
 
-# Generate full HTML dashboard
-npx tsx src/cli.ts analyze
-
-# Generate and open in browser
+# Generate the full HTML dashboard
 npx tsx src/cli.ts analyze --open
 
-# Scope to one project
+# Scope to a single project
 npx tsx src/cli.ts analyze --project /path/to/your/project
-
-# Open last report
-npx tsx src/cli.ts report
 ```
 
 Pulse reads from `~/.claude/projects/` — the directory Claude Code uses to store session transcripts and memory files. No configuration needed.
 
 ---
 
-## The 4 metrics
-
-### Turns to Resolution
-How many times you had to message the agent per session. Trending up means the agent is getting less efficient — more back-and-forth to complete the same kinds of tasks. Could be memory bloat, context pollution, or task complexity increasing.
-
-### File Revisit Rate
-`(duplicate file reads / total file reads)` per session. High rate = the agent re-read files it already had in context — token waste and a signal it couldn't hold state between tool calls. **workflow-automation in the screenshot above: 70%.** The agent re-read the same files 7 times out of 10.
-
-### Context Efficiency
-`cache_read_input_tokens / total input tokens`. Higher is better — it means the agent is reusing cached context from earlier in the session rather than reprocessing everything from scratch each turn. Consistently low values mean you're paying for tokens you've already paid for.
-
-### Memory Utilization
-`memory files read / total memory files stored`. Low ratio = the agent isn't using its own memory. Possible causes: too many memory entries (bloat), entries that don't match current task types, or stale entries that haven't been pruned.
-
----
-
-## What it found on real data
-
-Running Pulse against 73 sessions across 23 projects revealed patterns that weren't visible before:
-
-**workflow-automation — 70% file revisit rate, 81 avg turns.** The agent was re-reading the same files on nearly every turn. 81 turns average per session is a metabolic disorder — the same project type runs in 15–25 turns elsewhere. This is the kind of signal that was completely invisible before Pulse.
-
-**api-service — 34 turns, 43% revisit rate.** The agent was churning. Comparing to data-pipeline (38.5 turns but only 20% revisit) shows the revisit rate is the real problem, not just turn count.
-
-**data-pipeline — health score 95.** Short sessions, 100% cache efficiency, low revisit. This is what a healthy agent metabolism looks like. The contrast against the bottom of the list makes the pathology visible.
-
-**context-engine — 75% cache efficiency** vs everything else at 92–100%. This project routes some requests through a local model which bypasses Claude's cache. That's the cause — visible immediately in the metric.
-
----
-
-## How it works
+## How It Works
 
 Claude Code writes a JSONL file for every session to `~/.claude/projects/<project-slug>/<session-id>.jsonl`. Each line is a JSON event — user messages, assistant responses, tool calls, token counts. Pulse parses these files, filters out tool result callbacks (which inflate turn counts), and computes the four metrics per session.
 
 The HTML dashboard is a single self-contained file with Chart.js for trend lines and sparklines. No server, no build step.
-
----
-
-## Data stays local
-
-Pulse never sends data anywhere. It reads files on your disk and writes a report to your disk. The HTML file has no analytics, no telemetry, no external requests (Chart.js loads from CDN for the dashboard — remove it for fully offline use).
 
 ---
 
