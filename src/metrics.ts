@@ -46,7 +46,7 @@ export interface ProjectRollup {
 }
 
 function projectName(slug: string): string {
-  // Convert -Users-mikewahl-local-projects-Foo-Bar → Foo-Bar
+  // Convert -Users-<username>-local-projects-Foo-Bar → Foo-Bar
   return slug
     .replace(/^-Users-[^-]+-local-projects-/, '')
     .replace(/^-Users-[^-]+-Library-[^-]+-[^-]+-[^-]+-[^-]+-projects-/, '')
