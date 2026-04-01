@@ -95,17 +95,18 @@ export function computeSessionMetrics(session: Session): SessionMetrics {
 
   // Memory utilization — what fraction of memory files were read this session
   const memoryFilesTotal = session.memoryFiles.length;
-  const memoryFilesRead = session.turns.reduce((acc, turn) => {
+  const memoryFilesReadSet = new Set<string>();
+  for (const turn of session.turns) {
     for (const tc of turn.toolCalls) {
       if (tc.name === 'Read') {
         const fp = tc.input.file_path as string ?? '';
-        if (fp.includes('/memory/') && fp.endsWith('.md')) acc++;
+        if (fp.includes('/memory/') && fp.endsWith('.md')) memoryFilesReadSet.add(fp);
       }
     }
-    return acc;
-  }, 0);
+  }
+  const memoryFilesRead = memoryFilesReadSet.size;
   const memoryUtilization = memoryFilesTotal > 0
-    ? parseFloat((memoryFilesRead / memoryFilesTotal).toFixed(3))
+    ? parseFloat(Math.min(1, memoryFilesRead / memoryFilesTotal).toFixed(3))
     : 0;
 
   // Context efficiency — cache read ratio
