@@ -25,12 +25,14 @@ Pulse is the thermometer, not the doctor. It won't fix your codebase, but it wil
 
 ## Core Metrics
 
-Pulse parses your transcripts to calculate four key indicators:
+Pulse parses your transcripts to calculate six key indicators:
 
 1. **File Revisit Rate** — The percentage of times an agent reads a file it has already read in the same session. High rates indicate thrashing or missing context.
 2. **Turns to Resolution** — How many back-and-forth prompts it takes to close a task. Tracks whether the agent is getting smarter over time, or degrading as context windows bloat.
 3. **Context Efficiency** — Ratio of cache-read tokens vs. total input tokens. Low values mean you're paying for context the model already processed.
 4. **Memory Utilization** — Is the agent actually querying the local project memory it generated in previous sessions?
+5. **Frustration Index** — Runs negative-sentiment pattern matching against the user side of every transcript. When this spikes alongside File Revisit Rate, it pinpoints the exact sessions where context degradation caused the developer to lose patience.
+6. **Swarm Detection** — Identifies orchestrator sessions (those that spawned sub-agents) and sub-agent sessions separately. Health scores are computed from orchestrator/main sessions only — sub-agent file-read loops are focused worker behavior, not pathological thrashing.
 
 ---
 
@@ -70,7 +72,9 @@ Pulse reads from `~/.claude/projects/` — the directory Claude Code uses to sto
 
 ## How It Works
 
-Claude Code writes a JSONL file for every session to `~/.claude/projects/<project-slug>/<session-id>.jsonl`. Each line is a JSON event — user messages, assistant responses, tool calls, token counts. Pulse parses these files, filters out tool result callbacks (which inflate turn counts), and computes the four metrics per session.
+Claude Code writes a JSONL file for every session to `~/.claude/projects/<project-slug>/<session-id>.jsonl`. Each line is a JSON event — user messages, assistant responses, tool calls, token counts. Pulse parses these files, filters out tool result callbacks (which inflate turn counts), and computes metrics per session.
+
+When the Agent tool spawns sub-agents, their transcripts land in `<project-slug>/<session-id>/subagents/`. Pulse walks these directories automatically, tagging each session as a main thread, orchestrator, or sub-agent worker. The health score is always computed from main/orchestrator sessions so sub-agent behavior doesn't skew the signal.
 
 The HTML dashboard is a single self-contained file with Chart.js for trend lines and sparklines. No server, no build step.
 
