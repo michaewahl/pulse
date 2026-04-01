@@ -2,6 +2,8 @@ import path from 'path';
 import os from 'os';
 import { Session, getFileReadsFromTurn } from './parser.js';
 
+const FRUSTRATION_RE = /\b(wtf|wth|ffs|omfg|shit(ty|tiest)?|dumbass|horrible|awful|piss(ed|ing)? off|piece of (shit|crap|junk)|what the (fuck|hell)|fucking? (broken|useless|terrible|awful|horrible)|fuck you|screw (this|you)|so frustrating|this sucks|damn it)\b/i;
+
 export interface SessionMetrics {
   sessionId: string;
   projectSlug: string;
@@ -31,6 +33,15 @@ export interface SessionMetrics {
 
   totalOutputTokens: number;
   toolCallCount: number;
+
+  // Metric 5: Frustration Index
+  frustrationEvents: number;
+  frustrationIndex: number; // 0–1, higher = more user frustration
+
+  // Swarm
+  isSubAgent: boolean;
+  isOrchestrator: boolean;
+  agentSpawnCount: number;
 }
 
 export interface ProjectRollup {
@@ -42,6 +53,9 @@ export interface ProjectRollup {
   avgMemoryUtilization: number;
   avgContextEfficiency: number;
   healthScore: number; // 0–100
+  avgFrustrationIndex: number;
+  orchestratorSessionCount: number;
+  subAgentSessionCount: number;
   sessions: SessionMetrics[];
 }
 
@@ -112,6 +126,14 @@ export function computeSessionMetrics(session: Session): SessionMetrics {
   // Tool call count
   const toolCallCount = session.turns.reduce((acc, t) => acc + t.toolCalls.length, 0);
 
+  // Frustration Index — negative sentiment in user messages
+  const frustrationEvents = session.turns.filter(
+    t => t.role === 'user' && t.text && FRUSTRATION_RE.test(t.text)
+  ).length;
+  const frustrationIndex = userTurns > 0
+    ? parseFloat((frustrationEvents / userTurns).toFixed(3))
+    : 0;
+
   return {
     sessionId: session.id,
     projectSlug: session.projectSlug,
@@ -132,6 +154,11 @@ export function computeSessionMetrics(session: Session): SessionMetrics {
     contextEfficiency,
     totalOutputTokens,
     toolCallCount,
+    frustrationEvents,
+    frustrationIndex,
+    isSubAgent: session.isSubAgent,
+    isOrchestrator: session.agentSpawnCount > 0,
+    agentSpawnCount: session.agentSpawnCount,
   };
 }
 
@@ -150,21 +177,31 @@ export function rollupByProject(sessions: SessionMetrics[]): ProjectRollup[] {
 
   const rollups: ProjectRollup[] = [];
   for (const [slug, projectSessions] of byProject) {
-    const avgTurns = avg(projectSessions.map(s => s.userTurns));
-    const avgRevisit = avg(projectSessions.map(s => s.fileRevisitRate));
-    const avgMemory = avg(projectSessions.map(s => s.memoryUtilization));
-    const avgEfficiency = avg(projectSessions.map(s => s.contextEfficiency));
+    // Separate orchestrator/main sessions from sub-agent sessions.
+    // Sub-agents often have high revisit rates (focused workers) — keep them
+    // out of the health score so they don't skew the project signal.
+    const mainSessions = projectSessions.filter(s => !s.isSubAgent);
+    const subAgentSessions = projectSessions.filter(s => s.isSubAgent);
+    const base = mainSessions.length > 0 ? mainSessions : projectSessions;
+
+    const avgTurns = avg(base.map(s => s.userTurns));
+    const avgRevisit = avg(base.map(s => s.fileRevisitRate));
+    const avgMemory = avg(base.map(s => s.memoryUtilization));
+    const avgEfficiency = avg(base.map(s => s.contextEfficiency));
+    const avgFrustration = avg(projectSessions.map(s => s.frustrationIndex));
 
     // Health score: higher is better
     // - Low revisit rate (0 = great, 1 = bad) → invert
     // - High memory utilization (1 = great)
     // - High context efficiency (1 = great)
     // - Low turns relative to avg (normalize 1–20 range, invert)
+    // - Low frustration index (0 = great, 1 = bad) → invert
     const revisitScore = (1 - avgRevisit) * 100;
     const memoryScore = avgMemory * 100;
     const efficiencyScore = avgEfficiency * 100;
     const turnsScore = Math.max(0, 100 - (avgTurns / 20) * 100);
-    const healthScore = Math.round((revisitScore + memoryScore + efficiencyScore + turnsScore) / 4);
+    const frustrationScore = (1 - avgFrustration) * 100;
+    const healthScore = Math.round((revisitScore + memoryScore + efficiencyScore + turnsScore + frustrationScore) / 5);
 
     rollups.push({
       projectSlug: slug,
@@ -175,6 +212,9 @@ export function rollupByProject(sessions: SessionMetrics[]): ProjectRollup[] {
       avgMemoryUtilization: avgMemory,
       avgContextEfficiency: avgEfficiency,
       healthScore,
+      avgFrustrationIndex: avgFrustration,
+      orchestratorSessionCount: projectSessions.filter(s => s.isOrchestrator).length,
+      subAgentSessionCount: subAgentSessions.length,
       sessions: projectSessions.sort((a, b) => a.date.localeCompare(b.date)),
     });
   }

@@ -21,13 +21,17 @@ function projectCards(rollups: ProjectRollup[]): string {
     const revisitData = sparklineData(p.sessions, 'fileRevisitRate');
     const effData = sparklineData(p.sessions, 'contextEfficiency');
     const memData = sparklineData(p.sessions, 'memoryUtilization');
+    const frustData = sparklineData(p.sessions, 'frustrationIndex');
+    const swarmLabel = p.subAgentSessionCount > 0
+      ? `<span class="swarm-badge">⇢ ${p.orchestratorSessionCount} orch · ${p.subAgentSessionCount} sub</span>`
+      : '';
 
     return `
     <div class="project-card" onclick="showProject('${p.projectSlug}')">
       <div class="project-header">
         <div>
           <div class="project-name">${escapeHtml(p.projectName)}</div>
-          <div class="project-meta">${p.sessionCount} session${p.sessionCount !== 1 ? 's' : ''}</div>
+          <div class="project-meta">${p.sessionCount} session${p.sessionCount !== 1 ? 's' : ''}${swarmLabel}</div>
         </div>
         <div class="health-badge" style="background:${color}20;color:${color};border:1px solid ${color}40">
           ${p.healthScore}
@@ -54,6 +58,16 @@ function projectCards(rollups: ProjectRollup[]): string {
           <div class="metric-value">${pct(p.avgMemoryUtilization)}</div>
           <canvas class="sparkline" id="spark-mem-${p.projectSlug}" data-values='${JSON.stringify(memData)}'></canvas>
         </div>
+        <div class="metric-cell">
+          <div class="metric-label">Frustration</div>
+          <div class="metric-value" style="color:${p.avgFrustrationIndex > 0.15 ? 'var(--red)' : p.avgFrustrationIndex > 0.05 ? 'var(--orange)' : 'inherit'}">${pct(p.avgFrustrationIndex)}</div>
+          <canvas class="sparkline" id="spark-frust-${p.projectSlug}" data-values='${JSON.stringify(frustData)}'></canvas>
+        </div>
+        <div class="metric-cell">
+          <div class="metric-label">Swarm Sessions</div>
+          <div class="metric-value">${p.subAgentSessionCount > 0 ? p.subAgentSessionCount : '—'}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${p.orchestratorSessionCount > 0 ? `${p.orchestratorSessionCount} orchestrator${p.orchestratorSessionCount !== 1 ? 's' : ''}` : 'no swarm activity'}</div>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -61,18 +75,23 @@ function projectCards(rollups: ProjectRollup[]): string {
 
 function sessionRows(rollups: ProjectRollup[]): string {
   const allSessions = rollups.flatMap(p => p.sessions).sort((a, b) => b.date.localeCompare(a.date));
-  return allSessions.map(s => `
+  return allSessions.map(s => {
+    const typeLabel = s.isSubAgent ? 'sub' : s.isOrchestrator ? 'orch' : '';
+    const typeStyle = s.isSubAgent ? 'color:var(--blue)' : s.isOrchestrator ? 'color:var(--purple)' : 'color:var(--muted)';
+    return `
     <tr class="session-row" data-project="${s.projectSlug}">
       <td>${s.date}</td>
       <td class="proj-name">${escapeHtml(s.projectName)}</td>
-      <td>${escapeHtml(s.slug || s.sessionId.slice(0, 8))}</td>
+      <td>${escapeHtml(s.slug || s.sessionId.slice(0, 8))}${typeLabel ? ` <span style="font-size:10px;font-weight:600;${typeStyle}">[${typeLabel}]</span>` : ''}</td>
       <td>${s.userTurns}</td>
       <td class="${s.fileRevisitRate > 0.4 ? 'warn' : ''}">${pct(s.fileRevisitRate)}</td>
       <td class="${s.contextEfficiency < 0.3 ? 'warn' : ''}">${pct(s.contextEfficiency)}</td>
       <td class="${s.memoryUtilization === 0 && s.memoryFilesTotal > 0 ? 'warn' : ''}">${pct(s.memoryUtilization)}</td>
+      <td class="${s.frustrationIndex > 0.15 ? 'crit' : s.frustrationIndex > 0.05 ? 'hot' : ''}">${s.frustrationEvents > 0 ? pct(s.frustrationIndex) : '—'}</td>
       <td>${s.durationMinutes}m</td>
       <td>${(s.totalInputTokens / 1000).toFixed(0)}k</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 function escapeHtml(s: string): string {
@@ -132,6 +151,7 @@ export function generateReport(rollups: ProjectRollup[], generatedAt: Date): str
     --red: #ef4444;
     --blue: #3b82f6;
     --purple: #a855f7;
+    --orange: #f97316;
   }
   body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; font-size: 14px; line-height: 1.5; }
   a { color: var(--blue); text-decoration: none; }
@@ -165,7 +185,7 @@ export function generateReport(rollups: ProjectRollup[], generatedAt: Date): str
   .project-name { font-weight: 600; font-size: 15px; }
   .project-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .health-badge { font-size: 22px; font-weight: 700; padding: 6px 12px; border-radius: 8px; }
-  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
   .metric-cell { background: var(--surface2); border-radius: 8px; padding: 10px; }
   .metric-label { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
   .metric-value { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
@@ -182,6 +202,9 @@ export function generateReport(rollups: ProjectRollup[], generatedAt: Date): str
   td { padding: 10px 16px; font-size: 13px; }
   td.proj-name { font-weight: 500; }
   td.warn { color: var(--yellow); }
+  td.hot { color: var(--orange); }
+  td.crit { color: var(--red); }
+  .swarm-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: var(--blue)20; color: var(--blue); border: 1px solid var(--blue)40; margin-left: 6px; vertical-align: middle; }
 
   /* Metric explanations */
   .legend { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 32px; }
@@ -251,8 +274,9 @@ export function generateReport(rollups: ProjectRollup[], generatedAt: Date): str
           <th onclick="sortTable(4)">Revisit ↕</th>
           <th onclick="sortTable(5)">Cache Eff ↕</th>
           <th onclick="sortTable(6)">Mem Use ↕</th>
-          <th onclick="sortTable(7)">Duration ↕</th>
-          <th onclick="sortTable(8)">Tokens ↕</th>
+          <th onclick="sortTable(7)">Frustration ↕</th>
+          <th onclick="sortTable(8)">Duration ↕</th>
+          <th onclick="sortTable(9)">Tokens ↕</th>
         </tr>
       </thead>
       <tbody id="session-tbody">
@@ -278,6 +302,14 @@ export function generateReport(rollups: ProjectRollup[], generatedAt: Date): str
     <div class="legend-item">
       <div class="legend-name">Memory Utilization</div>
       <div class="legend-desc">Memory files read / total memory files stored. Low ratio = agent isn't using its own memory. Could indicate memory bloat or relevance problems.</div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-name">Frustration Index</div>
+      <div class="legend-desc">Fraction of user turns containing negative sentiment (profanity, frustration phrases). Correlates with context degradation: high File Revisit + high Frustration = agent is losing the thread. Ideal: 0%.</div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-name">Swarm Detection</div>
+      <div class="legend-desc">Sessions are tagged as Orchestrator (spawned sub-agents via Agent tool) or Sub-agent (ran inside a parent session). Health scores exclude sub-agent revisit rates — tight worker loops are expected, not pathological.</div>
     </div>
   </div>
 </div>
@@ -323,7 +355,8 @@ document.querySelectorAll('.sparkline').forEach(canvas => {
   const values = JSON.parse(raw);
   if (!values.length) return;
   const isRevisit = el.id.includes('revisit');
-  const color = isRevisit ? '#f59e0b' : '#a855f7';
+  const isFrust = el.id.includes('frust');
+  const color = isRevisit ? '#f59e0b' : isFrust ? '#f97316' : '#a855f7';
   new Chart(el, {
     type: 'line',
     data: {

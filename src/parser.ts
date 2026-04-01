@@ -12,6 +12,7 @@ export interface Turn {
   role: 'user' | 'assistant';
   timestamp: string;
   toolCalls: ToolCall[];
+  text?: string;
   usage?: {
     input_tokens: number;
     cache_read_input_tokens: number;
@@ -29,6 +30,8 @@ export interface Session {
   endTime: string;
   turns: Turn[];
   memoryFiles: string[];
+  isSubAgent: boolean;
+  agentSpawnCount: number;
 }
 
 const FILE_READ_TOOLS = new Set(['Read', 'Grep', 'Glob']);
@@ -79,6 +82,11 @@ export function parseSession(jsonlPath: string, projectSlug: string): Session | 
     const role = type as 'user' | 'assistant';
     const toolCalls: ToolCall[] = [];
     let usage: Turn['usage'] | undefined;
+    let text: string | undefined;
+    if (role === 'user' && Array.isArray(content)) {
+      const t = content.filter(b => b.type === 'text').map(b => (b.text as string) ?? '').join(' ').trim();
+      if (t) text = t;
+    }
 
     if (Array.isArray(content)) {
       for (const block of content) {
@@ -105,7 +113,7 @@ export function parseSession(jsonlPath: string, projectSlug: string): Session | 
       };
     }
 
-    turns.push({ uuid, role, timestamp, toolCalls, usage });
+    turns.push({ uuid, role, timestamp, toolCalls, text, usage });
   }
 
   if (turns.length === 0) return null;
@@ -121,6 +129,10 @@ export function parseSession(jsonlPath: string, projectSlug: string): Session | 
     // no memory dir
   }
 
+  const isSubAgent = jsonlPath.includes('/subagents/');
+  const agentSpawnCount = turns.reduce((acc, t) =>
+    acc + t.toolCalls.filter(tc => tc.name === 'Agent').length, 0);
+
   return {
     id: sessionId || path.basename(jsonlPath, '.jsonl'),
     projectSlug,
@@ -130,6 +142,8 @@ export function parseSession(jsonlPath: string, projectSlug: string): Session | 
     endTime: timestamps[timestamps.length - 1] ?? '',
     turns,
     memoryFiles,
+    isSubAgent,
+    agentSpawnCount,
   };
 }
 
@@ -159,6 +173,21 @@ export function loadAllSessions(scopeProject?: string): Session[] {
     for (const file of files) {
       const session = parseSession(path.join(projDir, file), slug);
       if (session) sessions.push(session);
+    }
+
+    // Sub-agent sessions live in <projDir>/<sessionId>/subagents/*.jsonl
+    const subdirs = fs.readdirSync(projDir).filter(d => {
+      try { return fs.statSync(path.join(projDir, d)).isDirectory(); } catch { return false; }
+    });
+    for (const subdir of subdirs) {
+      const subagentsDir = path.join(projDir, subdir, 'subagents');
+      try {
+        const subFiles = fs.readdirSync(subagentsDir).filter(f => f.endsWith('.jsonl'));
+        for (const file of subFiles) {
+          const session = parseSession(path.join(subagentsDir, file), slug);
+          if (session) sessions.push(session);
+        }
+      } catch { /* no subagents dir */ }
     }
   }
 
